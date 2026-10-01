@@ -1,0 +1,304 @@
+--[[
+    === TIMER HUB: AutoFarm (Fixed + Floating Toggle Button) ===
+    แก้ไขให้มีปุ่มลอยเปิด/ปิด UI กลับมา + ปุ่ม X ถามยืนยันก่อนลบ
+]]
+
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local isAutoFarmActive = false
+local scanRadius = 12
+local scanInterval = 0.1
+
+-- ลบ UI เก่าทิ้งทั้งหมดถ้ามี
+if CoreGui:FindFirstChild("TimerHubGUI") then
+    CoreGui.TimerHubGUI:Destroy()
+end
+if CoreGui:FindFirstChild("TimerHubToggleBtn") then
+    CoreGui.TimerHubToggleBtn:Destroy()
+end
+if CoreGui:FindFirstChild("TimerHubConfirmGUI") then
+    CoreGui.TimerHubConfirmGUI:Destroy()
+end
+
+-- 1. สร้างปุ่มลอยเปิด/ปิดหน้าต่าง (ไว้ที่มุมซ้ายบนของจอ ตลอดเวลา)
+local ToggleGui = Instance.new("ScreenGui")
+ToggleGui.Name = "TimerHubToggleBtn"
+ToggleGui.Parent = CoreGui
+ToggleGui.ResetOnSpawn = false
+ToggleGui.DisplayOrder = 998
+
+local OpenButton = Instance.new("TextButton")
+OpenButton.Size = UDim2.new(0, 110, 0, 35)
+OpenButton.Position = UDim2.new(0, 20, 0, 20)
+OpenButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenButton.TextSize = 13
+OpenButton.Font = Enum.Font.GothamBold
+OpenButton.Text = "⚡ Timer Hub"
+OpenButton.Parent = ToggleGui
+Instance.new("UICorner", OpenButton).CornerRadius = UDim.new(0, 8)
+Instance.new("UIStroke", OpenButton).Color = Color3.fromRGB(255, 30, 30)
+
+-- 2. สร้าง ScreenGui หลักสำหรับตัวเมนู
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TimerHubGUI"
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 999
+
+-- กรอบหน้าต่างหลัก (Main Frame)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 360, 0, 220)
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+
+-- ขอบเรืองแสงสีแดง
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(255, 30, 30)
+MainStroke.Thickness = 2
+MainStroke.Parent = MainFrame
+
+-- แถบหัวข้อด้านบน (Top Bar)
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, -16, 0, 35)
+TopBar.Position = UDim2.new(0, 8, 0, 8)
+TopBar.BackgroundTransparency = 1
+TopBar.Parent = MainFrame
+
+-- โลโก้/ชื่อหัวข้อ TIMER HUB
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(0, 200, 1, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 18
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Text = "⚡ TIMER HUB"
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TopBar
+
+-- ปุ่ม X (กดแล้วถามยืนยันการลบ)
+local CloseButton = Instance.new("TextButton")
+CloseButton.Size = UDim2.new(0, 28, 0, 28)
+CloseButton.Position = UDim2.new(1, -28, 0.1, 0)
+CloseButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+CloseButton.TextColor3 = Color3.fromRGB(255, 50, 50)
+CloseButton.TextSize = 14
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Text = "X"
+CloseButton.Parent = TopBar
+Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(0, 6)
+Instance.new("UIStroke", CloseButton).Color = Color3.fromRGB(200, 30, 30)
+
+-- ฟังก์ชันกดปุ่มลอยเพื่อซ่อน/แสดงเมนูหลัก
+OpenButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
+-- ฟังก์ชันแสดงหน้าต่างยืนยันการลบ เมื่อกดปุ่ม X
+CloseButton.MouseButton1Click:Connect(function()
+    if CoreGui:FindFirstChild("TimerHubConfirmGUI") then return end
+
+    local ConfirmGui = Instance.new("ScreenGui")
+    ConfirmGui.Name = "TimerHubConfirmGUI"
+    ConfirmGui.Parent = CoreGui
+    ConfirmGui.ResetOnSpawn = false
+    ConfirmGui.DisplayOrder = 1000
+
+    local ConfirmBox = Instance.new("Frame")
+    ConfirmBox.Size = UDim2.new(0, 280, 0, 130)
+    ConfirmBox.AnchorPoint = Vector2.new(0.5, 0.5)
+    ConfirmBox.Position = UDim2.new(0.5, 0, 0.5, 0)
+    ConfirmBox.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    ConfirmBox.Parent = ConfirmGui
+    Instance.new("UICorner", ConfirmBox).CornerRadius = UDim.new(0, 10)
+    local BoxStroke = Instance.new("UIStroke")
+    BoxStroke.Color = Color3.fromRGB(255, 50, 50)
+    BoxStroke.Thickness = 1.5
+    BoxStroke.Parent = ConfirmBox
+
+    local ConfirmText = Instance.new("TextLabel")
+    ConfirmText.Size = UDim2.new(1, 0, 0, 50)
+    ConfirmText.Position = UDim2.new(0, 0, 0, 15)
+    ConfirmText.BackgroundTransparency = 1
+    ConfirmText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ConfirmText.TextSize = 15
+    ConfirmText.Font = Enum.Font.GothamBold
+    ConfirmText.Text = "จะลบจริงใช่มั้ย?"
+    ConfirmText.Parent = ConfirmBox
+
+    -- ปุ่มใช่ (ลบ UI และปุ่มเปิด/ปิดทิ้งทั้งหมด)
+    local YesButton = Instance.new("TextButton")
+    YesButton.Size = UDim2.new(0, 110, 0, 35)
+    YesButton.Position = UDim2.new(0, 20, 0, 75)
+    YesButton.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+    YesButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    YesButton.TextSize = 14
+    YesButton.Font = Enum.Font.GothamBold
+    YesButton.Text = "ใช่, ลบเลย"
+    YesButton.Parent = ConfirmBox
+    Instance.new("UICorner", YesButton).CornerRadius = UDim.new(0, 6)
+
+    -- ปุ่มไม่ใช่ (ปิดกล่องถามเฉยๆ)
+    local NoButton = Instance.new("TextButton")
+    NoButton.Size = UDim2.new(0, 110, 0, 35)
+    NoButton.Position = UDim2.new(1, -130, 0, 75)
+    NoButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    NoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    NoButton.TextSize = 14
+    NoButton.Font = Enum.Font.GothamBold
+    NoButton.Text = "ไม่ใช่"
+    NoButton.Parent = ConfirmBox
+    Instance.new("UICorner", NoButton).CornerRadius = UDim.new(0, 6)
+
+    YesButton.MouseButton1Click:Connect(function()
+        ScreenGui:Destroy()
+        ToggleGui:Destroy()
+        ConfirmGui:Destroy()
+    end)
+
+    NoButton.MouseButton1Click:Connect(function()
+        ConfirmGui:Destroy()
+    end)
+end)
+
+-- กล่องพื้นหลังสำหรับวางปุ่มฟังก์ชัน
+local ContentContainer = Instance.new("Frame")
+ContentContainer.Size = UDim2.new(1, -20, 1, -55)
+ContentContainer.Position = UDim2.new(0, 10, 0, 45)
+ContentContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+ContentContainer.Parent = MainFrame
+
+Instance.new("UICorner", ContentContainer).CornerRadius = UDim.new(0, 8)
+local ContentStroke = Instance.new("UIStroke")
+ContentStroke.Color = Color3.fromRGB(180, 20, 20)
+ContentStroke.Thickness = 1.2
+ContentStroke.Parent = ContentContainer
+
+-- ปุ่มเปิด-ปิด ฟาร์มเทพ
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Size = UDim2.new(0.92, 0, 0, 45)
+ToggleButton.Position = UDim2.new(0.04, 0, 0.1, 0)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 15
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.Text = "🔥 ฟามโหด: OFF"
+ToggleButton.Parent = ContentContainer
+
+Instance.new("UICorner", ToggleButton).CornerRadius = UDim.new(0, 8)
+local ToggleStroke = Instance.new("UIStroke")
+ToggleStroke.Color = Color3.fromRGB(200, 40, 40)
+ToggleStroke.Thickness = 1.5
+ToggleStroke.Parent = ToggleButton
+
+-- กล่องแสดงสถานะ
+local StatusBox = Instance.new("Frame")
+StatusBox.Size = UDim2.new(0.92, 0, 0, 40)
+StatusBox.Position = UDim2.new(0.04, 0, 0.58, 0)
+StatusBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+StatusBox.Parent = ContentContainer
+
+Instance.new("UICorner", StatusBox).CornerRadius = UDim.new(0, 8)
+local StatusStroke = Instance.new("UIStroke")
+StatusStroke.Color = Color3.fromRGB(120, 20, 20)
+StatusStroke.Thickness = 1.2
+StatusStroke.Parent = StatusBox
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -15, 1, 0)
+StatusLabel.Position = UDim2.new(0, 10, 0, 0)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+StatusLabel.TextSize = 13
+StatusLabel.Font = Enum.Font.GothamMedium
+StatusLabel.Text = "🛡️ Status: OFF"
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Parent = StatusBox
+
+-- เอฟเฟกต์สีรุ้ง
+RunService.RenderStepped:Connect(function()
+    local hue = tick() % 5 / 5
+    local rainbowColor = Color3.fromHSV(hue, 1, 1)
+    TitleLabel.TextColor3 = rainbowColor
+    ToggleButton.TextColor3 = rainbowColor
+    OpenButton.TextColor3 = rainbowColor
+end)
+
+-- ระบบค้นหาตู้เย็น
+local function findNearestFridge()
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
+    local hrp = character.HumanoidRootPart
+    local nearestPrompt = nil
+    local shortestDist = scanRadius
+
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("ProximityPrompt") then
+            local promptParent = v.Parent
+            if promptParent and promptParent:IsA("BasePart") then
+                local dist = (hrp.Position - promptParent.Position).Magnitude
+                if dist < shortestDist then
+                    local pName = promptParent.Name
+                    local parentName = promptParent.Parent and promptParent.Parent.Name or ""
+                    if pName == "Fridge" or pName:lower():find("fridge") or parentName == "Fridge" or v.ObjectText == "ซ่อม" then
+                        shortestDist = dist
+                        nearestPrompt = v
+                    end
+                end
+            end
+        end
+    end
+    return nearestPrompt
+end
+
+local function interactWithFridge(prompt)
+    prompt.RequiresLineOfSight = false
+    StatusLabel.Text = "⚙ Working..."
+    local duration = prompt.HoldDuration > 0 and prompt.HoldDuration or 1.2
+    local startTime = tick()
+    
+    while tick() - startTime < duration and isAutoFarmActive do
+        fireproximityprompt(prompt)
+        task.wait(0.01)
+    end
+    StatusLabel.Text = "✨ Done!"
+end
+
+ToggleButton.MouseButton1Click:Connect(function()
+    isAutoFarmActive = not isAutoFarmActive
+    if isAutoFarmActive then
+        ToggleButton.Text = "🔥 ฟามโหด: ON"
+        ToggleStroke.Color = Color3.fromRGB(50, 255, 100)
+        MainStroke.Color = Color3.fromRGB(50, 255, 100)
+        StatusLabel.Text = "🛡️ Status: Active"
+    else
+        ToggleButton.Text = "🔥 ฟามโหด: OFF"
+        ToggleStroke.Color = Color3.fromRGB(200, 40, 40)
+        MainStroke.Color = Color3.fromRGB(255, 30, 30)
+        StatusLabel.Text = "🛡️ Status: OFF"
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(scanInterval)
+        if isAutoFarmActive then
+            local fridgePrompt = findNearestFridge()
+            if fridgePrompt then
+                interactWithFridge(fridgePrompt)
+            else
+                StatusLabel.Text = "🔍 No Fridge Nearby"
+            end
+        end
+    end
+end)
